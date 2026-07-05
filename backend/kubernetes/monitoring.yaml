@@ -1,0 +1,126 @@
+# =========================================================================
+# Prometheus Scraping, Grafana Dashboards, and Google Cloud Monitoring Spec
+# =========================================================================
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aegisroute-backend-monitor
+  namespace: logistics-intelligence
+  labels:
+    release: prometheus-stack
+    app: aegisroute-backend
+spec:
+  selector:
+    matchLabels:
+      app: aegisroute-backend
+  endpoints:
+  - port: http-api
+    path: /api/metrics
+    interval: 15s
+    scrapeTimeout: 10s
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegisroute-grafana-dashboards
+  namespace: logistics-intelligence
+  labels:
+    grafana_dashboard: "1"
+data:
+  aegisroute-telemetry-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": 104,
+      "links": [],
+      "liveNow": true,
+      "panels": [
+        {
+          "title": "CUDA GPU Memory Allocation Rate (%)",
+          "type": "gauge",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+          "targets": [
+            { "expr": "sum(cudf_gpu_memory_used_bytes) / sum(cudf_gpu_memory_total_bytes) * 100", "legendFormat": "GPU Memory" }
+          ]
+        },
+        {
+          "title": "Ingestion System Pipeline Throughput (rows/sec)",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 12, "x": 6, "y": 0 },
+          "targets": [
+            { "expr": "rate(aegisroute_ingested_rows_total[1m])", "legendFormat": "Throughput" }
+          ]
+        },
+        {
+          "title": "Gemini Solver Average Latency (ms)",
+          "type": "stat",
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum(rate(aegisroute_llm_request_latency_seconds_bucket[5m])) by (le)) * 1000" }
+          ]
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 36,
+      "style": "dark",
+      "tags": ["AegisRoute", "GPU", "GKE"],
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "AegisRoute CUDA & Ingestion Telemetry Hub"
+    }
+
+---
+# Google Cloud Monitoring (Stackdriver) Dashboard Specification
+apiVersion: monitoring.cnrm.cloud.google.com/v1beta1
+kind: MonitoringDashboard
+metadata:
+  name: aegisroute-cloud-monitoring-dashboard
+  namespace: logistics-intelligence
+spec:
+  displayName: "AegisRoute GKE GPU & BigQuery Telemetry Operations"
+  gcl_dashboard_json: |
+    {
+      "displayName": "AegisRoute GKE GPU & BigQuery Telemetry Operations",
+      "gridLayout": {
+        "columns": "2",
+        "widgets": [
+          {
+            "title": "GKE GPU Duty Cycle (%)",
+            "xyChart": {
+              "dataSets": [
+                {
+                  "timeSeriesQuery": {
+                    "timeSeriesFilter": {
+                      "filter": "resource.type=\"k8s_node\" metric.type=\"kubernetes.io/container/accelerator/duty_cycle\"",
+                      "aggregation": {
+                        "perSeriesAligner": "ALIGN_MEAN"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "title": "FastAPI HTTP Response Latency (99th percentile)",
+            "xyChart": {
+              "dataSets": [
+                {
+                  "timeSeriesQuery": {
+                    "timeSeriesFilter": {
+                      "filter": "resource.type=\"k8s_container\" metric.type=\"kubernetes.io/container/cpu/core_usage_time\"",
+                      "aggregation": {
+                        "perSeriesAligner": "ALIGN_RATE"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }

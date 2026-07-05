@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegisroute-ingress
+  namespace: logistics-intelligence
+  annotations:
+    # Use Google Cloud HTTP(S) Load Balancer for global routing
+    kubernetes.io/ingress.class: "gce"
+    # Enable SSL Redirect to enforce HTTPS protocols
+    ingress.gcp.kubernetes.io/ssl-redirect: "true"
+    # Map static global IP address allocated in Google Cloud VPC
+    kubernetes.io/ingress.global-static-ip-name: "aegisroute-global-ip"
+    # Enable CDN for fast visual assets caching
+    cloud.google.com/backend-config: '{"default": "aegisroute-backend-config"}'
+spec:
+  tls:
+  - hosts:
+    - aegisroute.enterprise.com
+    secretName: aegisroute-tls-certs
+  rules:
+  - host: aegisroute.enterprise.com
+    http:
+      paths:
+      # Ingest backend API endpoint mapping
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: aegisroute-backend-srv
+            port:
+              number: 8000
+      # Glassmorphic BI Streamlit portal landing page
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aegisroute-frontend-srv
+            port:
+              number: 8501

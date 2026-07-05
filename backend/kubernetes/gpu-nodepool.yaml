@@ -1,0 +1,73 @@
+# =========================================================================
+# GKE GPU Node Pool Provisioning Specs & Automated NVIDIA Drivers DaemonSet
+# =========================================================================
+
+# Step 1: Execute gcloud command to create an L4 GPU Node Pool in your GKE Cluster:
+# -------------------------------------------------------------------------
+# gcloud container node-pools create gpu-l4-pool \
+#   --cluster=aegisroute-prod-cluster \
+#   --region=us-central1 \
+#   --machine-type=g2-standard-8 \ # 8 vCPUs, 32GB RAM
+#   --accelerator=type=nvidia-l4,count=1 \
+#   --num-nodes=3 \
+#   --min-nodes=1 \
+#   --max-nodes=10 \
+#   --enable-autoscaling \
+#   --node-locations=us-central1-a,us-central1-b \
+#   --node-taints=nvidia.com/gpu=present:NoSchedule \
+#   --metadata=install-nvidia-driver=true
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-driver-installer
+  namespace: kube-system
+  labels:
+    k8s-app: nvidia-driver-installer
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-driver-installer
+  template:
+    metadata:
+      labels:
+        name: nvidia-driver-installer
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: cloud.google.com/gke-gpu-driver-version
+                operator: Exists
+      tolerations:
+      - operator: "Exists"
+        effect: "NoSchedule"
+      hostNetwork: true
+      hostPID: true
+      volumes:
+      - name: dev
+        hostPath:
+          path: /dev
+      - name: boot
+        hostPath:
+          path: /boot
+      - name: lspci
+        hostPath:
+          path: /usr/share/misc/pci.ids
+      containers:
+      - image: gcr.io/gke-release/nvidia-partition-driver@sha256:4941913c8f18471
+        name: nvidia-driver-installer
+        resources:
+          requests:
+            cpu: 150m
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: dev
+          mountPath: /dev
+        - name: boot
+          mountPath: /boot
+        - name: lspci
+          mountPath: /usr/share/misc/pci.ids

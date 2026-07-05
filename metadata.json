@@ -1,0 +1,6 @@
+{
+  "name": "AegisRoute",
+  "description": "Real-Time Supply Chain Disruption Intelligence Platform utilizing NVIDIA RAPIDS and Google Cloud",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

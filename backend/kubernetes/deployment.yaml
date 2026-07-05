@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegisroute-backend
+  namespace: logistics-intelligence
+  labels:
+    app: aegisroute-backend
+    tier: api
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aegisroute-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: aegisroute-backend
+    spec:
+      # GPU Affinity: Pin backend pods specifically to node pool with NVIDIA L4 GPUs
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: cloud.google.com/gke-gpu-driver-version
+                operator: Exists
+              - key: cloud.google.com/gke-nodepool
+                operator: In
+                values:
+                - gpu-l4-pool
+      
+      # Tolerations: Tolerate GKE GPU node pool taints to allow pod scheduling
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+
+      containers:
+      - name: rapids-cudf-backend
+        image: gcr.io/supply-chain-aegis/aegisroute-gpu-backend:v1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: api-port
+        
+        # Resource Requests & Limits allocating Dedicated NVIDIA L4 GPUs with High-Memory CPU profiles
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: 32Gi
+            cpu: "8"
+          requests:
+            nvidia.com/gpu: 1
+            memory: 16Gi
+            cpu: "4"
+
+        # Production-grade Health Probes verifying FastAPI readiness and liveness
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+        # Injected Environment States from ConfigMaps and Secrets
+        envFrom:
+        - configMapRef:
+            name: aegisroute-config
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aegisroute-secrets
+              key: gemini-api-key
+        - name: DB_URI
+          valueFrom:
+            secretKeyRef:
+              name: aegisroute-secrets
+              key: db-uri
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegisroute-frontend
+  namespace: logistics-intelligence
+  labels:
+    app: aegisroute-frontend
+    tier: web
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aegisroute-frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: aegisroute-frontend
+    spec:
+      containers:
+      - name: streamlit-portal
+        image: gcr.io/supply-chain-aegis/aegisroute-streamlit:v1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+          name: web-port
+        
+        # Standard CPU-bound microservices configurations
+        resources:
+          limits:
+            memory: 4Gi
+            cpu: "2"
+          requests:
+            memory: 2Gi
+            cpu: "1"
+
+        # Health checks probing Streamlit TCP connectivity
+        livenessProbe:
+          tcpSocket:
+            port: 8501
+          initialDelaySeconds: 15
+          periodSeconds: 15
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: 8501
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+
+        envFrom:
+        - configMapRef:
+            name: aegisroute-config
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aegisroute-secrets
+              key: gemini-api-key

@@ -1,0 +1,74 @@
+version: "3.8"
+
+services:
+  fastapi-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aegisroute-fastapi-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DB_URI=postgresql://postgres:postgres@postgres-db:5432/aegisroute
+      - BQ_DATASET_ID=aegisroute_dw
+      - BQ_TELEMETRY_TABLE=live_telemetry
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - aegisroute-mesh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  streamlit-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aegisroute-streamlit-portal
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      - PORT=8501
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - BACKEND_API_URL=http://fastapi-backend:8000
+    entrypoint: ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    depends_on:
+      - fastapi-backend
+    networks:
+      - aegisroute-mesh
+
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: aegisroute-postgres-dw
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=aegisroute
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - aegisroute-mesh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aegisroute"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+    driver: local
+
+networks:
+  aegisroute-mesh:
+    driver: bridge

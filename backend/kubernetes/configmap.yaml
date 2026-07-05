@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegisroute-config
+  namespace: logistics-intelligence
+  labels:
+    app: aegisroute-platform
+    environment: production
+data:
+  PORT: "8000"
+  LOG_LEVEL: "INFO"
+  
+  # Google Cloud BigQuery Analytics Coordinates
+  GCP_PROJECT_ID: "supply-chain-aegis"
+  GCP_REGION: "us-central1"
+  BQ_DATASET_ID: "aegisroute_dw"
+  BQ_TELEMETRY_TABLE: "live_telemetry"
+  BQ_PARTITION_FIELD: "timestamp"
+  
+  # Google Cloud Storage Buckets
+  TELEMETRY_BUCKET_NAME: "aegisroute-telemetry-bucket"
+  HAZARD_LAYERS_BUCKET_NAME: "aegisroute-hazards-bucket"
+  
+  # CUDA RAPIDS Thread Allocations & Speedup Enablers
+  LIBCUDF_CUFILE_ENABLED: "1"
+  LIBCUDF_NUM_THREADS: "16"
+  RAPIDS_SHUFFLE_PARTITIONS: "128"
+  
+  # Streamlit Frontend Inter-Service URL
+  BACKEND_API_URL: "http://aegisroute-backend-srv.logistics-intelligence.svc.cluster.local:8000"
